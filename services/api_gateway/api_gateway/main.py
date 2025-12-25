@@ -2,7 +2,6 @@ from fastapi import FastAPI
 from fastapi.concurrency import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from api_gateway.routes import webhook
-
 from api_gateway.config import settings
 
 from shared.providers.redis import RedisFactory
