@@ -38,14 +38,33 @@ async def main():
                 repo = job["repo_name"]
                 pr_id = job["pr_number"]
 
+                # Broadcast START
+                await redis.publish(
+                    "sentinel_events",
+                    json.dumps(
+                        {"type": "log", "message": f"Picked up PR #{pr_id} in {repo}"}
+                    ),
+                )
+                # Broadcast END
+
                 logger.info(f"Analyzing PR #{pr_id} in {repo}...")
 
-                # Offload blocking PyGithub call to a thread pool
                 diff_text = await github_service.get_pr_diff(repo, pr_id)
 
                 if not diff_text:
                     logger.info("No relevant code changes found.")
                     continue
+
+                # BROADCAST PROGRESS
+                await redis.publish(
+                    "sentinel_events",
+                    json.dumps(
+                        {
+                            "type": "log",
+                            "message": f"Extracted diff for PR #{pr_id}. Analyzing...",
+                        }
+                    ),
+                )
 
                 # AI Review is native async, so we await it directly
                 review_comments = await reviewer.analyze_code(diff_text)
@@ -54,6 +73,18 @@ async def main():
                     formatted_msg = f"## GitSentinel Review\n\n{review_comments}"
                     await github_service.post_comment(repo, pr_id, formatted_msg)
                     logger.info(f"Posted review for PR #{pr_id}")
+                    # BROADCAST SUCCESS
+                    await redis.publish(
+                        "sentinel_events",
+                        json.dumps(
+                            {
+                                "type": "success",
+                                "repo": repo,
+                                "pr": pr_id,
+                                "message": "Review Posted!",
+                            }
+                        ),
+                    )
 
         except Exception as e:
             logger.error(f"Error processing job: {e}")
