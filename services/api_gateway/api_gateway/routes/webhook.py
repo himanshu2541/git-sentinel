@@ -1,8 +1,11 @@
 import logging
 import json
-from fastapi import APIRouter, Request, Header
+from fastapi import APIRouter, Request, Header, WebSocket, WebSocketDisconnect
+from redis.asyncio import Redis
+from pydantic import BaseModel
 from shared.providers.redis import RedisFactory
 from api_gateway.core.utils import verify_signature
+from api_gateway.config import settings
 
 router = APIRouter()
 logger = logging.getLogger("Gateway.Webhook")
@@ -38,9 +41,9 @@ async def handle_github_webhook(request: Request, x_hub_signature_256: str = Hea
 
     return {"status": "ignored"}
 
-from pydantic import BaseModel
 
 class ManualReviewRequest(BaseModel):
+    repo_name: str = "Manual-Override"
     code: str
 
 @router.post("/manual")
@@ -51,7 +54,7 @@ async def manual_review_endpoint(payload: ManualReviewRequest):
     job_data = {
         "source": "manual",
         "code": payload.code,
-        "repo_name": "Manual-Override",
+        "repo_name": payload.repo_name,
         "pr_number": 0
     }
     
@@ -59,3 +62,36 @@ async def manual_review_endpoint(payload: ManualReviewRequest):
     await redis.lpush("review_jobs", json.dumps(job_data)) # type: ignore
     
     return {"status": "queued", "message": "Manual review started"}
+
+    
+@router.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    
+    # Create a DEDICATED connection with NO timeout for this long-lived socket.
+    # We cannot use the shared pool if it has a default timeout.
+    redis_ws = Redis.from_url(settings.REDIS_URL, socket_timeout=None)
+    pubsub = redis_ws.pubsub()
+    
+    await pubsub.subscribe("sentinel_events")
+    logger.info("WebSocket connected and subscribed to Redis.")
+
+    try:
+        async for message in pubsub.listen():
+            if message["type"] == "message":
+                # Forward Redis message to Browser
+                # Redis sends bytes, so we decode to string
+                data = message["data"]
+                if isinstance(data, bytes):
+                    data = data.decode("utf-8")
+                    
+                await websocket.send_text(data)
+                
+    except WebSocketDisconnect:
+        logger.info("WebSocket disconnected.")
+    except Exception as e:
+        logger.error(f"WebSocket Error: {e}")
+    finally:
+        # Close the dedicated connection when the socket closes
+        await pubsub.unsubscribe("sentinel_events")
+        await redis_ws.close()
