@@ -4,10 +4,11 @@ version = "0.1.0"
 description = "Review Worker Service"
 requires-python = ">=3.12"
 dependencies = [
+    "gidgethub>=5.4.0",
+    "httpx>=0.28.1",
     "langchain>=1.2.0",
     "langchain-core>=1.2.5",
     "langchain-openai>=1.1.6",
-    "pygithub>=2.8.1",
     "shared",
 ]
 
