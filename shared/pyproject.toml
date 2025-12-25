@@ -1,0 +1,18 @@
+[project]
+name = "shared"
+version = "0.1.0"
+description = "Shared Utilities and Configurations"
+requires-python = ">=3.12"
+dependencies = [
+    "fakeredis>=2.33.0",
+    "pydantic>=2.6.0",
+    "pydantic-settings>=2.12.0",
+    "redis>=7.1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["shared"]
