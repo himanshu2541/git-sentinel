@@ -37,3 +37,25 @@ async def handle_github_webhook(request: Request, x_hub_signature_256: str = Hea
             return {"status": "queued"}
 
     return {"status": "ignored"}
+
+from pydantic import BaseModel
+
+class ManualReviewRequest(BaseModel):
+    code: str
+
+@router.post("/manual")
+async def manual_review_endpoint(payload: ManualReviewRequest):
+    """
+    Accepts raw code from Frontend and queues it for the Worker.
+    """
+    job_data = {
+        "source": "manual",
+        "code": payload.code,
+        "repo_name": "Manual-Override",
+        "pr_number": 0
+    }
+    
+    redis = RedisFactory.get_client()
+    await redis.lpush("review_jobs", json.dumps(job_data)) # type: ignore
+    
+    return {"status": "queued", "message": "Manual review started"}
